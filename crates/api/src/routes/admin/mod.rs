@@ -1,3 +1,6 @@
+pub mod api_keys;
+pub mod organizations;
+
 use actix_web::{get, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
 
@@ -6,8 +9,9 @@ use crate::extractors::auth::Authenticated;
 #[utoipa::path(
     get,
     path = "/admin/health",
+    tag = "admin",
     responses(
-        (status = 200, description = "API is healthy"),
+        (status = 200, description = "Admin route group is healthy"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Not Found"),
@@ -29,5 +33,7 @@ pub async fn admin_health(auth: Authenticated) -> actix_web::Result<impl Respond
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(admin_health);
+    cfg.service(admin_health)
+        .configure(organizations::configure)
+        .configure(api_keys::configure);
 }

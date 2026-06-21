@@ -7,9 +7,6 @@ use actix_web::{HttpResponse, Responder, get, web};
     responses(
         (status = 200, description = "API is healthy"),
         (status = 401, description = "Unauthorized"),
-        (status = 404, description = "Not Found"),
-        (status = 405, description = "Method Not Allowed"),
-        (status = 429, description = "Too Many Requests"),
         (status = 500, description = "Internal Server Error"),
         (status = 503, description = "Service Unavailable"),
         (status = 504, description = "Gateway Timeout")
@@ -30,7 +27,10 @@ async fn healthz() -> impl Responder {
     tag = "health",
     responses(
         (status = 200, description = "API dependencies are ready"),
-        (status = 503, description = "One or more dependencies are unavailable")
+        (status = 401, description = "Unauthorized"),
+        (status = 500, description = "Internal Server Error"),
+        (status = 503, description = "One or more dependencies are unavailable"),
+        (status = 504, description = "Gateway Timeout")
     )
 )]
 #[get("/readyz")]
@@ -55,5 +55,6 @@ pub async fn readyz(state: web::Data<AppState>) -> impl Responder {
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(healthz);
+    cfg.service(healthz)
+        .service(readyz);
 }
