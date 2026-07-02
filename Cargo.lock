@@ -491,6 +491,8 @@ dependencies = [
  "actix-web",
  "chrono",
  "futures-util",
+ "hex",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "thiserror",
@@ -558,6 +560,7 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]

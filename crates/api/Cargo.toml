@@ -19,6 +19,7 @@ tracing-subscriber.workspace = true
 tokio.workspace = true
 utoipa.workspace = true
 utoipa-swagger-ui.workspace = true
+uuid.workspace = true
 
 cortex-core = { path = "../core" }
 cortex-auth = { path = "../auth" }
