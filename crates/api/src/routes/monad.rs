@@ -1,8 +1,5 @@
-use actix_web::{get, web, HttpResponse, Responder};
-use cortex_auth::{
-    extractor::require_scope,
-    model::Scope,
-};
+use actix_web::{HttpResponse, Responder, get, web};
+use cortex_auth::{extractor::require_scope, model::Scope};
 
 use crate::extractors::auth::Authenticated;
 #[utoipa::path(

@@ -1,8 +1,4 @@
-use actix_web::{
-    dev::Payload,
-    error::ErrorUnauthorized,
-    web, FromRequest, HttpRequest,
-};
+use actix_web::{FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized, web};
 use cortex_auth::model::AuthContext;
 use futures_util::future::LocalBoxFuture;
 

@@ -1,4 +1,4 @@
-use actix_web::{http::StatusCode, test, web, App};
+use actix_web::{App, http::StatusCode, test, web};
 use cortex_staking_api::{app, config::Config, state::AppState};
 use sqlx::postgres::PgPoolOptions;
 
@@ -176,4 +176,74 @@ async fn partner_key_cannot_create_organization() {
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[actix_web::test]
+async fn cortex_key_can_create_partner_organization() {
+    let app = test::init_service(
+        App::new()
+            .app_data(test_state())
+            .configure(app::configure_app),
+    )
+    .await;
+
+    let unique_name = format!(
+        "Test Partner {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_millis()
+    );
+
+    let req = test::TestRequest::post()
+        .uri("/admin/organizations")
+        .insert_header(("Authorization", "Bearer ctx_dev_cortex.secret"))
+        .insert_header(("Content-Type", "application/json"))
+        .set_payload(format!(r#"{{"name":"{}"}}"#, unique_name))
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[actix_web::test]
+async fn created_organization_appears_in_list() {
+    let app = test::init_service(
+        App::new()
+            .app_data(test_state())
+            .configure(app::configure_app),
+    )
+    .await;
+
+    let unique_name = format!(
+        "List Test Partner {}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_millis()
+    );
+
+    let create_req = test::TestRequest::post()
+        .uri("/admin/organizations")
+        .insert_header(("Authorization", "Bearer ctx_dev_cortex.secret"))
+        .insert_header(("Content-Type", "application/json"))
+        .set_payload(format!(r#"{{"name":"{}"}}"#, unique_name))
+        .to_request();
+
+    let create_resp = test::call_service(&app, create_req).await;
+    assert_eq!(create_resp.status(), StatusCode::CREATED);
+
+    let list_req = test::TestRequest::get()
+        .uri("/admin/organizations")
+        .insert_header(("Authorization", "Bearer ctx_dev_cortex.secret"))
+        .to_request();
+
+    let list_resp = test::call_service(&app, list_req).await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+
+    let body = test::read_body(list_resp).await;
+    let body_text = std::str::from_utf8(&body).expect("response body should be utf8");
+
+    assert!(body_text.contains(&unique_name));
 }

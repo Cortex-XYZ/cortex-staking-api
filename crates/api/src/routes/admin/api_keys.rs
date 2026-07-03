@@ -1,5 +1,6 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
-use cortex_auth::{api_key::generate_api_key, extractor::require_cortex_admin};
+use actix_web::{HttpResponse, Responder, get, post, web};
+use cortex_auth::extractor::require_cortex_admin;
+use cortex_services::api_key_service;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -65,15 +66,11 @@ pub async fn create_api_key(
 ) -> actix_web::Result<impl Responder> {
     require_cortex_admin(&auth.0)?;
 
-    let generated = generate_api_key("partner");
-
-    let created = cortex_db::api_key_repository::create_organization_api_key(
+    let created = api_key_service::create_organization_api_key(
         &state.db,
-        cortex_db::api_key_repository::CreateOrganizationApiKeyInput {
+        api_key_service::CreateOrganizationApiKeyServiceInput {
             organization_id: body.organization_id.clone(),
             name: body.name.clone(),
-            key_prefix: generated.key_prefix.clone(),
-            token: generated.token.clone(),
             scopes: body.scopes.clone(),
             rate_limit_per_minute: body.rate_limit_per_minute.unwrap_or(120),
         },
@@ -82,8 +79,8 @@ pub async fn create_api_key(
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Created().json(CreateApiKeyResponse {
-        api_key: created.into(),
-        token: generated.token,
+        api_key: created.api_key.into(),
+        token: created.token,
     }))
 }
 
@@ -104,7 +101,7 @@ pub async fn list_api_keys(
 ) -> actix_web::Result<impl Responder> {
     require_cortex_admin(&auth.0)?;
 
-    let keys = cortex_db::api_key_repository::list_api_keys(&state.db)
+    let keys = api_key_service::list_api_keys(&state.db)
         .await
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
@@ -135,12 +132,9 @@ pub async fn revoke_api_key(
 ) -> actix_web::Result<impl Responder> {
     require_cortex_admin(&auth.0)?;
 
-    let Some(key) = cortex_db::api_key_repository::revoke_api_key(
-        &state.db,
-        &path.into_inner(),
-    )
-    .await
-    .map_err(actix_web::error::ErrorInternalServerError)?
+    let Some(key) = api_key_service::revoke_api_key(&state.db, &path.into_inner())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
     else {
         return Ok(HttpResponse::NotFound().json(serde_json::json!({
             "error": "api_key_not_found"

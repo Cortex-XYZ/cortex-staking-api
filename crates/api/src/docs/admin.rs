@@ -1,17 +1,11 @@
 use crate::routes::admin::{
     __path_admin_health,
     api_keys::{
-        __path_create_api_key,
-        __path_list_api_keys,
-        __path_revoke_api_key,
-        ApiKeyResponse,
-        CreateApiKeyRequest,
-        CreateApiKeyResponse,
+        __path_create_api_key, __path_list_api_keys, __path_revoke_api_key, ApiKeyResponse,
+        CreateApiKeyRequest, CreateApiKeyResponse,
     },
     organizations::{
-        __path_create_organization,
-        __path_list_organizations,
-        CreateOrganizationRequest,
+        __path_create_organization, __path_list_organizations, CreateOrganizationRequest,
         OrganizationResponse,
     },
 };

@@ -1,10 +1,11 @@
 [workspace]
 members = [
     "crates/api",
-    "crates/core",
     "crates/auth",
-    "crates/db",
     "crates/chains/monad",
+    "crates/core",
+    "crates/db",
+    "crates/services",
 ]
 resolver = "2"
 

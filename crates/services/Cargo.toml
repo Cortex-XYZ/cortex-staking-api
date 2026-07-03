@@ -1,0 +1,13 @@
+[package]
+name = "cortex-services"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+sqlx.workspace = true
+
+cortex-auth = { path = "../auth" }
+cortex-db = { path = "../db" }

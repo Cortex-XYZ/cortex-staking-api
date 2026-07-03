@@ -31,9 +31,7 @@ pub async fn create_partner_organization(
     })
 }
 
-pub async fn list_organizations(
-    db: &PgPool,
-) -> Result<Vec<OrganizationRecord>, sqlx::Error> {
+pub async fn list_organizations(db: &PgPool) -> Result<Vec<OrganizationRecord>, sqlx::Error> {
     let rows = sqlx::query(
         r#"
         SELECT id::text, name, kind, status

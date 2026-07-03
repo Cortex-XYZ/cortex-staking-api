@@ -539,6 +539,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cortex-services"
+version = "0.1.0"
+dependencies = [
+ "cortex-auth",
+ "cortex-db",
+ "serde",
+ "sqlx",
+]
+
+[[package]]
 name = "cortex-staking-api"
 version = "0.1.0"
 dependencies = [
@@ -549,6 +559,7 @@ dependencies = [
  "cortex-chain-monad",
  "cortex-core",
  "cortex-db",
+ "cortex-services",
  "dotenvy",
  "futures-util",
  "reqwest",

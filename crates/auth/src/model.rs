@@ -45,8 +45,7 @@ pub struct AuthContext {
 
 impl AuthContext {
     pub fn is_cortex_admin(&self) -> bool {
-        self.organization_kind == OrganizationKind::Cortex
-            && self.scopes.contains(&Scope::Admin)
+        self.organization_kind == OrganizationKind::Cortex && self.scopes.contains(&Scope::Admin)
     }
 
     pub fn is_partner(&self) -> bool {

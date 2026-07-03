@@ -1,7 +1,7 @@
 pub mod api_keys;
 pub mod organizations;
 
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 use cortex_auth::extractor::require_cortex_admin;
 
 use crate::extractors::auth::Authenticated;

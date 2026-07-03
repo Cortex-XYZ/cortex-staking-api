@@ -1,7 +1,4 @@
-use crate::routes::health::{
-    __path_healthz, 
-    __path_readyz,
-};
+use crate::routes::health::{__path_healthz, __path_readyz};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]

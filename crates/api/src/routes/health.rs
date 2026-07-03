@@ -35,9 +35,7 @@ async fn healthz() -> impl Responder {
 )]
 #[get("/readyz")]
 pub async fn readyz(state: web::Data<AppState>) -> impl Responder {
-    let db_result = sqlx::query("SELECT 1")
-        .execute(&state.db)
-        .await;
+    let db_result = sqlx::query("SELECT 1").execute(&state.db).await;
 
     match db_result {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
@@ -55,6 +53,5 @@ pub async fn readyz(state: web::Data<AppState>) -> impl Responder {
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(healthz)
-        .service(readyz);
+    cfg.service(healthz).service(readyz);
 }
