@@ -1,4 +1,4 @@
-use actix_web::{get, post, web, HttpResponse, Responder};
+use actix_web::{get, post, delete, patch, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
 use cortex_services::organization_service;
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,12 @@ pub struct OrganizationResponse {
     pub name: String,
     pub kind: String,
     pub status: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateOrganizationRequest {
+    pub name: Option<String>,
+    pub status: Option<String>,
 }
 
 impl From<cortex_db::organization_repository::OrganizationRecord> for OrganizationResponse {
@@ -92,7 +98,117 @@ pub async fn list_organizations(
     Ok(HttpResponse::Ok().json(response))
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/organizations/{id}",
+    tag = "admin",
+    params(("id" = String, Path, description = "Organization ID")),
+    responses(
+        (status = 200, description = "Organization returned", body = OrganizationResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "Organization not found")
+    )
+)]
+#[get("/organizations/{id}")]
+pub async fn get_organization_by_id(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(organization) =
+        organization_service::get_organization_by_id(&state.db, &path.into_inner())
+            .await
+            .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "organization_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/admin/organizations/{id}",
+    tag = "admin",
+    params(("id" = String, Path, description = "Organization ID")),
+    request_body = UpdateOrganizationRequest,
+    responses(
+        (status = 200, description = "Organization updated", body = OrganizationResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "Organization not found")
+    )
+)]
+#[patch("/organizations/{id}")]
+pub async fn update_organization(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+    body: web::Json<UpdateOrganizationRequest>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(organization) = organization_service::update_organization(
+        &state.db,
+        &path.into_inner(),
+        organization_service::UpdateOrganizationInput {
+            name: body.name.clone(),
+            status: body.status.clone(),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "organization_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/admin/organizations/{id}",
+    tag = "admin",
+    params(("id" = String, Path, description = "Organization ID")),
+    responses(
+        (status = 200, description = "Organization deleted", body = OrganizationResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "Organization not found")
+    )
+)]
+#[delete("/organizations/{id}")]
+pub async fn delete_organization(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(organization) =
+        organization_service::delete_organization(&state.db, &path.into_inner())
+            .await
+            .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "organization_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(create_organization)
-        .service(list_organizations);
+        .service(list_organizations)
+        .service(get_organization_by_id)
+        .service(update_organization)
+        .service(delete_organization);
 }
