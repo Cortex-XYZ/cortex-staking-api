@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, Responder, get, post, web};
+use actix_web::{HttpResponse, Responder, get, post, delete, web};
 use cortex_auth::extractor::require_cortex_admin;
 use cortex_services::api_key_service;
 use serde::{Deserialize, Serialize};
@@ -144,8 +144,116 @@ pub async fn revoke_api_key(
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/api-keys/{id}",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 200, description = "API key returned", body = ApiKeyResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "API key not found")
+    )
+)]
+#[get("/api-keys/{id}")]
+pub async fn get_api_key_by_id(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(key) = api_key_service::get_api_key_by_id(&state.db, &path.into_inner())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "api_key_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/api-keys/{id}/rotate",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 201, description = "API key rotated", body = CreateApiKeyResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "API key not found")
+    )
+)]
+#[post("/api-keys/{id}/rotate")]
+pub async fn rotate_api_key(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(rotated) = api_key_service::rotate_api_key(&state.db, &path.into_inner())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "api_key_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Created().json(CreateApiKeyResponse {
+        api_key: rotated.api_key.into(),
+        token: rotated.token,
+    }))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/admin/api-keys/{id}",
+    tag = "admin",
+    params(
+        ("id" = String, Path, description = "API key ID")
+    ),
+    responses(
+        (status = 200, description = "API key deleted", body = ApiKeyResponse),
+        (status = 401, description = "Missing or invalid API key"),
+        (status = 403, description = "Cortex admin key required"),
+        (status = 404, description = "API key not found")
+    )
+)]
+#[delete("/api-keys/{id}")]
+pub async fn delete_api_key(
+    auth: Authenticated,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> actix_web::Result<impl Responder> {
+    require_cortex_admin(&auth.0)?;
+
+    let Some(key) = api_key_service::delete_api_key(&state.db, &path.into_inner())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    else {
+        return Ok(HttpResponse::NotFound().json(serde_json::json!({
+            "error": "api_key_not_found"
+        })));
+    };
+
+    Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
+}
+
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(create_api_key)
         .service(list_api_keys)
-        .service(revoke_api_key);
+        .service(get_api_key_by_id)
+        .service(rotate_api_key)
+        .service(revoke_api_key)
+        .service(delete_api_key);
 }

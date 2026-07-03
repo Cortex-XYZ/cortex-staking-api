@@ -47,9 +47,60 @@ pub async fn list_api_keys(db: &PgPool) -> Result<Vec<ApiKeyRecord>, sqlx::Error
     api_key_repository::list_api_keys(db).await
 }
 
+pub async fn get_api_key_by_id(
+    db: &PgPool,
+    api_key_id: &str,
+) -> Result<Option<ApiKeyRecord>, sqlx::Error> {
+    api_key_repository::get_api_key_by_id(db, api_key_id).await
+}
+
 pub async fn revoke_api_key(
     db: &PgPool,
     api_key_id: &str,
 ) -> Result<Option<ApiKeyRecord>, sqlx::Error> {
     api_key_repository::revoke_api_key(db, api_key_id).await
+}
+
+pub async fn delete_api_key(
+    db: &PgPool,
+    api_key_id: &str,
+) -> Result<Option<ApiKeyRecord>, sqlx::Error> {
+    api_key_repository::soft_delete_api_key(db, api_key_id).await
+}
+
+pub async fn rotate_api_key(
+    db: &PgPool,
+    api_key_id: &str,
+) -> Result<Option<CreatedApiKey>, sqlx::Error> {
+    let Some(old_key) = api_key_repository::get_api_key_by_id(db, api_key_id).await? else {
+        return Ok(None);
+    };
+
+    let Some(organization_id) = old_key.organization_id.clone() else {
+        return Ok(None);
+    };
+
+    let scopes = api_key_repository::get_api_key_scopes(db, api_key_id).await?;
+
+    api_key_repository::revoke_api_key(db, api_key_id).await?;
+
+    let generated = generate_api_key("partner");
+
+    let new_key = api_key_repository::create_organization_api_key(
+        db,
+        CreateOrganizationApiKeyInput {
+            organization_id,
+            name: format!("{} (rotated)", old_key.name),
+            key_prefix: generated.key_prefix,
+            token: generated.token.clone(),
+            scopes,
+            rate_limit_per_minute: old_key.rate_limit_per_minute,
+        },
+    )
+    .await?;
+
+    Ok(Some(CreatedApiKey {
+        api_key: new_key,
+        token: generated.token,
+    }))
 }
