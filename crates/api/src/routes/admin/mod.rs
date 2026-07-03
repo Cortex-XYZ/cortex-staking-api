@@ -1,5 +1,6 @@
 pub mod api_keys;
 pub mod organizations;
+pub mod users;
 
 use actix_web::{HttpResponse, Responder, get, web};
 use cortex_auth::extractor::require_cortex_admin;
@@ -34,6 +35,7 @@ pub async fn admin_health(auth: Authenticated) -> actix_web::Result<impl Respond
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(admin_health)
-        .configure(organizations::configure)
-        .configure(api_keys::configure);
+    .configure(api_keys::configure)
+    .configure(organizations::configure)
+    .configure(users::configure);
 }
