@@ -1,6 +1,10 @@
 use actix_web::{HttpResponse, Responder, get, post, delete, web};
 use cortex_auth::extractor::require_cortex_admin;
-use cortex_services::api_key_service;
+use cortex_services::{
+    api_key_service,
+    audit_actions, 
+    audit_service,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -78,6 +82,33 @@ pub async fn create_api_key(
     .await
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::API_KEY_CREATED.to_string(),
+            resource_type: "api_key".to_string(),
+            resource_id: Some(created.api_key.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": created.api_key.id,
+                "owner_type": created.api_key.owner_type,
+                "organization_id": created.api_key.organization_id,
+                "user_id": created.api_key.user_id,
+                "name": created.api_key.name,
+                "key_prefix": created.api_key.key_prefix,
+                "status": created.api_key.status,
+                "rate_limit_per_minute": created.api_key.rate_limit_per_minute,
+                "scopes": body.scopes,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
     Ok(HttpResponse::Created().json(CreateApiKeyResponse {
         api_key: created.api_key.into(),
         token: created.token,
@@ -140,6 +171,27 @@ pub async fn revoke_api_key(
             "error": "api_key_not_found"
         })));
     };
+
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::API_KEY_REVOKED.to_string(),
+            resource_type: "api_key".to_string(),
+            resource_id: Some(key.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": key.id,
+                "key_prefix": key.key_prefix,
+                "status": key.status,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
 }
@@ -209,6 +261,29 @@ pub async fn rotate_api_key(
         })));
     };
 
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::API_KEY_ROTATED.to_string(),
+            resource_type: "api_key".to_string(),
+            resource_id: Some(rotated.api_key.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": rotated.api_key.id,
+                "key_prefix": rotated.api_key.key_prefix,
+                "status": rotated.api_key.status,
+                "name": rotated.api_key.name,
+                "rate_limit_per_minute": rotated.api_key.rate_limit_per_minute,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
     Ok(HttpResponse::Created().json(CreateApiKeyResponse {
         api_key: rotated.api_key.into(),
         token: rotated.token,
@@ -245,6 +320,27 @@ pub async fn delete_api_key(
             "error": "api_key_not_found"
         })));
     };
+
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::API_KEY_DELETED.to_string(),
+            resource_type: "api_key".to_string(),
+            resource_id: Some(key.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": key.id,
+                "key_prefix": key.key_prefix,
+                "status": key.status,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
 }

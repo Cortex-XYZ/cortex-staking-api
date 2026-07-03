@@ -1,6 +1,10 @@
 use actix_web::{get, post, delete, patch, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
-use cortex_services::organization_service;
+use cortex_services::{
+    audit_actions, 
+    audit_service,
+    organization_service,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -60,6 +64,28 @@ pub async fn create_organization(
         &state.db,
         organization_service::CreatePartnerOrganizationInput {
             name: body.name.clone(),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::ORGANIZATION_CREATED.to_string(),
+            resource_type: "organization".to_string(),
+            resource_id: Some(organization.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": organization.id,
+                "name": organization.name,
+                "kind": organization.kind,
+                "status": organization.status,
+            })),
         },
     )
     .await
@@ -169,6 +195,28 @@ pub async fn update_organization(
         })));
     };
 
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::ORGANIZATION_UPDATED.to_string(),
+            resource_type: "organization".to_string(),
+            resource_id: Some(organization.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": organization.id,
+                "name": organization.name,
+                "kind": organization.kind,
+                "status": organization.status,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
     Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
 }
 
@@ -201,6 +249,28 @@ pub async fn delete_organization(
             "error": "organization_not_found"
         })));
     };
+
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::ORGANIZATION_DELETED.to_string(),
+            resource_type: "organization".to_string(),
+            resource_id: Some(organization.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": organization.id,
+                "name": organization.name,
+                "kind": organization.kind,
+                "status": organization.status,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
 }

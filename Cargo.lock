@@ -532,6 +532,7 @@ dependencies = [
  "chrono",
  "cortex-auth",
  "cortex-core",
+ "serde_json",
  "sqlx",
  "utoipa",
  "utoipa-swagger-ui",
@@ -545,6 +546,7 @@ dependencies = [
  "cortex-auth",
  "cortex-db",
  "serde",
+ "serde_json",
  "sqlx",
 ]
 

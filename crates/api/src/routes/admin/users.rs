@@ -1,6 +1,10 @@
 use actix_web::{delete, get, patch, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
-use cortex_services::user_service;
+use cortex_services::{
+    audit_actions, 
+    audit_service,
+    user_service,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -145,6 +149,32 @@ pub async fn update_user(
         })));
     };
 
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::USER_UPDATED.to_string(),
+            resource_type: "user".to_string(),
+            resource_id: Some(user.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": user.id,
+                "email": user.email,
+                "wallet_address": user.wallet_address,
+                "social_provider": user.social_provider,
+                "social_provider_user_id": user.social_provider_user_id,
+                "status": user.status,
+                "key_limit": user.key_limit,
+                "rate_limit_tier": user.rate_limit_tier,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
     Ok(HttpResponse::Ok().json(UserResponse::from(user)))
 }
 
@@ -178,6 +208,30 @@ pub async fn delete_user(
             "error": "user_not_found"
         })));
     };
+
+    audit_service::record_admin_action(
+        &state.db,
+        audit_service::RecordAuditLogInput {
+            actor_api_key_id: Some(auth.0.api_key_id.clone()),
+            actor_organization_id: auth.0.organization_id.clone(),
+            action: audit_actions::USER_DELETED.to_string(),
+            resource_type: "user".to_string(),
+            resource_id: Some(user.id.clone()),
+            ip_address: None,
+            request_id: None,
+            old_values: None,
+            new_values: Some(serde_json::json!({
+                "id": user.id,
+                "email": user.email,
+                "wallet_address": user.wallet_address,
+                "status": user.status,
+                "key_limit": user.key_limit,
+                "rate_limit_tier": user.rate_limit_tier,
+            })),
+        },
+    )
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
 
     Ok(HttpResponse::Ok().json(UserResponse::from(user)))
 }
