@@ -67,5 +67,6 @@ pub async fn authenticate_api_key(
         organization_kind,
         user_id: first.try_get("user_id")?,
         scopes,
+        rate_limit_per_minute: first.try_get("rate_limit_per_minute")?,
     }))
 }

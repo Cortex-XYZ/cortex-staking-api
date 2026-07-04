@@ -41,6 +41,7 @@ pub struct AuthContext {
     pub user_id: Option<String>,
     pub organization_kind: OrganizationKind,
     pub scopes: Vec<Scope>,
+    pub rate_limit_per_minute: i32,
 }
 
 impl AuthContext {
@@ -66,5 +67,9 @@ impl AuthContext {
 
     pub fn can_write(&self) -> bool {
         self.has_scope(Scope::Write)
+    }
+
+    pub fn rate_limit_per_minute(&self) -> i32 {
+        self.rate_limit_per_minute
     }
 }

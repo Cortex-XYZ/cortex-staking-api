@@ -1,4 +1,10 @@
-use actix_web::{FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized, web};
+use actix_web::{
+    FromRequest, 
+    HttpRequest, 
+    dev::Payload, 
+    error::{ErrorTooManyRequests, ErrorUnauthorized},
+    web
+};
 use cortex_auth::model::AuthContext;
 use futures_util::future::LocalBoxFuture;
 
@@ -33,10 +39,19 @@ impl FromRequest for Authenticated {
                 .await
                 .map_err(|_| ErrorUnauthorized("failed to authenticate API key"))?;
 
-            match auth {
-                Some(auth) => Ok(Authenticated(auth)),
-                None => Err(ErrorUnauthorized("invalid API key")),
+            let Some(auth) = auth else {
+                return Err(ErrorUnauthorized("invalid API key"));
+            };
+
+            let allowed = state
+                .rate_limiter
+                .allow(&auth.api_key_id, auth.rate_limit_per_minute);
+
+            if !allowed {
+                return Err(ErrorTooManyRequests("rate limit exceeded"));
             }
+
+            Ok(Authenticated(auth))
         })
     }
 }
