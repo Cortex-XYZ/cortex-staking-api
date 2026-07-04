@@ -1,16 +1,13 @@
-use actix_web::{HttpResponse, Responder, get, post, delete, web};
+use actix_web::{delete, get, post, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
-use cortex_services::{
-    api_key_service,
-    audit_actions, 
-    audit_service,
-};
+use cortex_services::{api_key_service, audit_actions, audit_service};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
-    extractors::{auth::Authenticated, request_id::get_request_id}, 
-    state::AppState
+    errors::{internal_error, not_found},
+    extractors::{auth::Authenticated, request_id::get_request_id},
+    state::AppState,
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -73,10 +70,10 @@ pub async fn create_api_key(
     body: web::Json<CreateApiKeyRequest>,
 ) -> actix_web::Result<impl Responder> {
     let request_id = get_request_id(&req);
-    
+
     require_cortex_admin(&auth.0)?;
 
-    let created = api_key_service::create_organization_api_key(
+    let created = match api_key_service::create_organization_api_key(
         &state.db,
         api_key_service::CreateOrganizationApiKeyServiceInput {
             organization_id: body.organization_id.clone(),
@@ -86,9 +83,12 @@ pub async fn create_api_key(
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    {
+        Ok(created) => created,
+        Err(_) => return Ok(internal_error(request_id)),
+    };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -97,23 +97,26 @@ pub async fn create_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(created.api_key.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": created.api_key.id,
-                "owner_type": created.api_key.owner_type,
-                "organization_id": created.api_key.organization_id,
-                "user_id": created.api_key.user_id,
-                "name": created.api_key.name,
-                "key_prefix": created.api_key.key_prefix,
-                "status": created.api_key.status,
+                "id": created.api_key.id.clone(),
+                "owner_type": created.api_key.owner_type.clone(),
+                "organization_id": created.api_key.organization_id.clone(),
+                "user_id": created.api_key.user_id.clone(),
+                "name": created.api_key.name.clone(),
+                "key_prefix": created.api_key.key_prefix.clone(),
+                "status": created.api_key.status.clone(),
                 "rate_limit_per_minute": created.api_key.rate_limit_per_minute,
-                "scopes": body.scopes,
+                "scopes": body.scopes.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Created().json(CreateApiKeyResponse {
         api_key: created.api_key.into(),
@@ -133,14 +136,18 @@ pub async fn create_api_key(
 )]
 #[get("/api-keys")]
 pub async fn list_api_keys(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
-    let keys = api_key_service::list_api_keys(&state.db)
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+    let keys = match api_key_service::list_api_keys(&state.db).await {
+        Ok(keys) => keys,
+        Err(_) => return Ok(internal_error(request_id)),
+    };
 
     let response: Vec<ApiKeyResponse> = keys.into_iter().map(ApiKeyResponse::from).collect();
 
@@ -172,16 +179,19 @@ pub async fn revoke_api_key(
 
     require_cortex_admin(&auth.0)?;
 
-    let Some(key) = api_key_service::revoke_api_key(&state.db, &path.into_inner())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "api_key_not_found"
-        })));
+    let key = match api_key_service::revoke_api_key(&state.db, &path.into_inner()).await {
+        Ok(Some(key)) => key,
+        Ok(None) => {
+            return Ok(not_found(
+                "api_key_not_found",
+                "API key not found",
+                request_id,
+            ));
+        }
+        Err(_) => return Ok(internal_error(request_id)),
     };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -190,17 +200,20 @@ pub async fn revoke_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(key.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": key.id,
-                "key_prefix": key.key_prefix,
-                "status": key.status,
+                "id": key.id.clone(),
+                "key_prefix": key.key_prefix.clone(),
+                "status": key.status.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
 }
@@ -221,19 +234,25 @@ pub async fn revoke_api_key(
 )]
 #[get("/api-keys/{id}")]
 pub async fn get_api_key_by_id(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
-    let Some(key) = api_key_service::get_api_key_by_id(&state.db, &path.into_inner())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "api_key_not_found"
-        })));
+    let key = match api_key_service::get_api_key_by_id(&state.db, &path.into_inner()).await {
+        Ok(Some(key)) => key,
+        Ok(None) => {
+            return Ok(not_found(
+                "api_key_not_found",
+                "API key not found",
+                request_id,
+            ));
+        }
+        Err(_) => return Ok(internal_error(request_id)),
     };
 
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
@@ -260,21 +279,23 @@ pub async fn rotate_api_key(
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
-
     let request_id = get_request_id(&req);
 
     require_cortex_admin(&auth.0)?;
 
-    let Some(rotated) = api_key_service::rotate_api_key(&state.db, &path.into_inner())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "api_key_not_found"
-        })));
+    let rotated = match api_key_service::rotate_api_key(&state.db, &path.into_inner()).await {
+        Ok(Some(rotated)) => rotated,
+        Ok(None) => {
+            return Ok(not_found(
+                "api_key_not_found",
+                "API key not found",
+                request_id,
+            ));
+        }
+        Err(_) => return Ok(internal_error(request_id)),
     };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -283,19 +304,22 @@ pub async fn rotate_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(rotated.api_key.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": rotated.api_key.id,
-                "key_prefix": rotated.api_key.key_prefix,
-                "status": rotated.api_key.status,
-                "name": rotated.api_key.name,
+                "id": rotated.api_key.id.clone(),
+                "key_prefix": rotated.api_key.key_prefix.clone(),
+                "status": rotated.api_key.status.clone(),
+                "name": rotated.api_key.name.clone(),
                 "rate_limit_per_minute": rotated.api_key.rate_limit_per_minute,
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Created().json(CreateApiKeyResponse {
         api_key: rotated.api_key.into(),
@@ -328,16 +352,19 @@ pub async fn delete_api_key(
 
     require_cortex_admin(&auth.0)?;
 
-    let Some(key) = api_key_service::delete_api_key(&state.db, &path.into_inner())
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "api_key_not_found"
-        })));
+    let key = match api_key_service::delete_api_key(&state.db, &path.into_inner()).await {
+        Ok(Some(key)) => key,
+        Ok(None) => {
+            return Ok(not_found(
+                "api_key_not_found",
+                "API key not found",
+                request_id,
+            ));
+        }
+        Err(_) => return Ok(internal_error(request_id)),
     };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -346,17 +373,20 @@ pub async fn delete_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(key.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": key.id,
-                "key_prefix": key.key_prefix,
-                "status": key.status,
+                "id": key.id.clone(),
+                "key_prefix": key.key_prefix.clone(),
+                "status": key.status.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Ok().json(ApiKeyResponse::from(key)))
 }

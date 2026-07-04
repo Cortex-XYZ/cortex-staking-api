@@ -1,16 +1,13 @@
-use actix_web::{get, post, delete, patch, web, HttpResponse, Responder};
+use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
-use cortex_services::{
-    audit_actions, 
-    audit_service,
-    organization_service,
-};
+use cortex_services::{audit_actions, audit_service, organization_service};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
-    extractors::{auth::Authenticated, request_id::get_request_id}, 
-    state::AppState
+    errors::{internal_error, not_found},
+    extractors::{auth::Authenticated, request_id::get_request_id},
+    state::AppState,
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -66,16 +63,19 @@ pub async fn create_organization(
 
     require_cortex_admin(&auth.0)?;
 
-    let organization = organization_service::create_partner_organization(
+    let organization = match organization_service::create_partner_organization(
         &state.db,
         organization_service::CreatePartnerOrganizationInput {
             name: body.name.clone(),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    {
+        Ok(organization) => organization,
+        Err(_) => return Ok(internal_error(request_id)),
+    };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -84,18 +84,21 @@ pub async fn create_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": organization.id,
-                "name": organization.name,
-                "kind": organization.kind,
-                "status": organization.status,
+                "id": organization.id.clone(),
+                "name": organization.name.clone(),
+                "kind": organization.kind.clone(),
+                "status": organization.status.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Created().json(OrganizationResponse::from(organization)))
 }
@@ -113,14 +116,18 @@ pub async fn create_organization(
 )]
 #[get("/organizations")]
 pub async fn list_organizations(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
-    let organizations = organization_service::list_organizations(&state.db)
-        .await
-        .map_err(actix_web::error::ErrorInternalServerError)?;
+    let organizations = match organization_service::list_organizations(&state.db).await {
+        Ok(organizations) => organizations,
+        Err(_) => return Ok(internal_error(request_id)),
+    };
 
     let response: Vec<OrganizationResponse> = organizations
         .into_iter()
@@ -144,21 +151,27 @@ pub async fn list_organizations(
 )]
 #[get("/organizations/{id}")]
 pub async fn get_organization_by_id(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
-    let Some(organization) =
-        organization_service::get_organization_by_id(&state.db, &path.into_inner())
-            .await
-            .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "organization_not_found"
-        })));
-    };
+    let organization =
+        match organization_service::get_organization_by_id(&state.db, &path.into_inner()).await {
+            Ok(Some(organization)) => organization,
+            Ok(None) => {
+                return Ok(not_found(
+                    "organization_not_found",
+                    "Organization not found",
+                    request_id,
+                ));
+            }
+            Err(_) => return Ok(internal_error(request_id)),
+        };
 
     Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
 }
@@ -188,7 +201,7 @@ pub async fn update_organization(
 
     require_cortex_admin(&auth.0)?;
 
-    let Some(organization) = organization_service::update_organization(
+    let organization = match organization_service::update_organization(
         &state.db,
         &path.into_inner(),
         organization_service::UpdateOrganizationInput {
@@ -197,14 +210,19 @@ pub async fn update_organization(
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "organization_not_found"
-        })));
+    {
+        Ok(Some(organization)) => organization,
+        Ok(None) => {
+            return Ok(not_found(
+                "organization_not_found",
+                "Organization not found",
+                request_id,
+            ));
+        }
+        Err(_) => return Ok(internal_error(request_id)),
     };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -213,18 +231,21 @@ pub async fn update_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": organization.id,
-                "name": organization.name,
-                "kind": organization.kind,
-                "status": organization.status,
+                "id": organization.id.clone(),
+                "name": organization.name.clone(),
+                "kind": organization.kind.clone(),
+                "status": organization.status.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
 }
@@ -252,17 +273,20 @@ pub async fn delete_organization(
 
     require_cortex_admin(&auth.0)?;
 
-    let Some(organization) =
-        organization_service::delete_organization(&state.db, &path.into_inner())
-            .await
-            .map_err(actix_web::error::ErrorInternalServerError)?
-    else {
-        return Ok(HttpResponse::NotFound().json(serde_json::json!({
-            "error": "organization_not_found"
-        })));
-    };
+    let organization =
+        match organization_service::delete_organization(&state.db, &path.into_inner()).await {
+            Ok(Some(organization)) => organization,
+            Ok(None) => {
+                return Ok(not_found(
+                    "organization_not_found",
+                    "Organization not found",
+                    request_id,
+                ));
+            }
+            Err(_) => return Ok(internal_error(request_id)),
+        };
 
-    audit_service::record_admin_action(
+    if audit_service::record_admin_action(
         &state.db,
         audit_service::RecordAuditLogInput {
             actor_api_key_id: Some(auth.0.api_key_id.clone()),
@@ -271,18 +295,21 @@ pub async fn delete_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id,
+            request_id: request_id.clone(),
             old_values: None,
             new_values: Some(serde_json::json!({
-                "id": organization.id,
-                "name": organization.name,
-                "kind": organization.kind,
-                "status": organization.status,
+                "id": organization.id.clone(),
+                "name": organization.name.clone(),
+                "kind": organization.kind.clone(),
+                "status": organization.status.clone(),
             })),
         },
     )
     .await
-    .map_err(actix_web::error::ErrorInternalServerError)?;
+    .is_err()
+    {
+        return Ok(internal_error(request_id));
+    }
 
     Ok(HttpResponse::Ok().json(OrganizationResponse::from(organization)))
 }
