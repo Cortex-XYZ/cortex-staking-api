@@ -8,7 +8,10 @@ use cortex_services::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{extractors::auth::Authenticated, state::AppState};
+use crate::{
+    extractors::{auth::Authenticated, request_id::get_request_id}, 
+    state::AppState
+};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserResponse {
@@ -123,11 +126,14 @@ pub async fn get_user_by_id(
 )]
 #[patch("/users/{id}")]
 pub async fn update_user(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateUserRequest>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(user) = user_service::update_user(
@@ -158,7 +164,7 @@ pub async fn update_user(
             resource_type: "user".to_string(),
             resource_id: Some(user.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": user.id,
@@ -194,10 +200,13 @@ pub async fn update_user(
 )]
 #[delete("/users/{id}")]
 pub async fn delete_user(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(user) = user_service::delete_user(&state.db, &path.into_inner())
@@ -218,7 +227,7 @@ pub async fn delete_user(
             resource_type: "user".to_string(),
             resource_id: Some(user.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": user.id,

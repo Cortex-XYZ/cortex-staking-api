@@ -8,7 +8,10 @@ use cortex_services::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{extractors::auth::Authenticated, state::AppState};
+use crate::{
+    extractors::{auth::Authenticated, request_id::get_request_id}, 
+    state::AppState
+};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateOrganizationRequest {
@@ -54,10 +57,13 @@ impl From<cortex_db::organization_repository::OrganizationRecord> for Organizati
 )]
 #[post("/organizations")]
 pub async fn create_organization(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     body: web::Json<CreateOrganizationRequest>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let organization = organization_service::create_partner_organization(
@@ -78,7 +84,7 @@ pub async fn create_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": organization.id,
@@ -172,11 +178,14 @@ pub async fn get_organization_by_id(
 )]
 #[patch("/organizations/{id}")]
 pub async fn update_organization(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
     body: web::Json<UpdateOrganizationRequest>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(organization) = organization_service::update_organization(
@@ -204,7 +213,7 @@ pub async fn update_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": organization.id,
@@ -234,10 +243,13 @@ pub async fn update_organization(
 )]
 #[delete("/organizations/{id}")]
 pub async fn delete_organization(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(organization) =
@@ -259,7 +271,7 @@ pub async fn delete_organization(
             resource_type: "organization".to_string(),
             resource_id: Some(organization.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": organization.id,

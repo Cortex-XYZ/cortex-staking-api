@@ -3,7 +3,12 @@ use reqwest::Client;
 use sqlx::postgres::PgPoolOptions;
 use std::time::Duration;
 
-use cortex_staking_api::{app, config::Config, state::AppState};
+use cortex_staking_api::{
+    app, 
+    config::Config, 
+    middleware::request_id::RequestIdMiddleware,
+    state::AppState
+};
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
 
     actix_web::HttpServer::new(move || {
         actix_web::App::new()
+        .wrap(RequestIdMiddleware)
             .app_data(state.clone())
             .configure(app::configure_app)
     })

@@ -8,7 +8,10 @@ use cortex_services::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{extractors::auth::Authenticated, state::AppState};
+use crate::{
+    extractors::{auth::Authenticated, request_id::get_request_id}, 
+    state::AppState
+};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {
@@ -64,10 +67,13 @@ impl From<cortex_db::api_key_repository::ApiKeyRecord> for ApiKeyResponse {
 )]
 #[post("/api-keys")]
 pub async fn create_api_key(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     body: web::Json<CreateApiKeyRequest>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+    
     require_cortex_admin(&auth.0)?;
 
     let created = api_key_service::create_organization_api_key(
@@ -91,7 +97,7 @@ pub async fn create_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(created.api_key.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": created.api_key.id,
@@ -157,10 +163,13 @@ pub async fn list_api_keys(
 )]
 #[post("/api-keys/{id}/revoke")]
 pub async fn revoke_api_key(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(key) = api_key_service::revoke_api_key(&state.db, &path.into_inner())
@@ -181,7 +190,7 @@ pub async fn revoke_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(key.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": key.id,
@@ -246,10 +255,14 @@ pub async fn get_api_key_by_id(
 )]
 #[post("/api-keys/{id}/rotate")]
 pub async fn rotate_api_key(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(rotated) = api_key_service::rotate_api_key(&state.db, &path.into_inner())
@@ -270,7 +283,7 @@ pub async fn rotate_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(rotated.api_key.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": rotated.api_key.id,
@@ -306,10 +319,13 @@ pub async fn rotate_api_key(
 )]
 #[delete("/api-keys/{id}")]
 pub async fn delete_api_key(
+    req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
     path: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
+    let request_id = get_request_id(&req);
+
     require_cortex_admin(&auth.0)?;
 
     let Some(key) = api_key_service::delete_api_key(&state.db, &path.into_inner())
@@ -330,7 +346,7 @@ pub async fn delete_api_key(
             resource_type: "api_key".to_string(),
             resource_id: Some(key.id.clone()),
             ip_address: None,
-            request_id: None,
+            request_id,
             old_values: None,
             new_values: Some(serde_json::json!({
                 "id": key.id,
