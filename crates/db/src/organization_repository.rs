@@ -1,3 +1,4 @@
+use crate::pagination::DbPagination;
 use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone)]
@@ -6,6 +7,12 @@ pub struct OrganizationRecord {
     pub name: String,
     pub kind: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaginatedOrganizations {
+    pub items: Vec<OrganizationRecord>,
+    pub total_items: i64,
 }
 
 pub async fn create_partner_organization(
@@ -23,35 +30,57 @@ pub async fn create_partner_organization(
     .fetch_one(db)
     .await?;
 
-    Ok(OrganizationRecord {
-        id: row.try_get("id")?,
-        name: row.try_get("name")?,
-        kind: row.try_get("kind")?,
-        status: row.try_get("status")?,
-    })
+    row_to_organization_record(row)
 }
 
-pub async fn list_organizations(db: &PgPool) -> Result<Vec<OrganizationRecord>, sqlx::Error> {
-    let rows = sqlx::query(
+pub async fn list_organizations(
+    db: &PgPool,
+    pagination: DbPagination,
+) -> Result<PaginatedOrganizations, sqlx::Error> {
+    let total_items: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM organizations
+        "#,
+    )
+    .fetch_one(db)
+    .await?;
+
+    let sort_column = match pagination.sort_column.as_str() {
+        "name" => "name",
+        "kind" => "kind",
+        "status" => "status",
+        "created_at" => "created_at",
+        _ => "created_at",
+    };
+
+    let sort_direction = match pagination.sort_direction.as_str() {
+        "asc" => "ASC",
+        _ => "DESC",
+    };
+
+    let query = format!(
         r#"
         SELECT id::text, name, kind, status
         FROM organizations
-        ORDER BY created_at DESC
+        ORDER BY {} {}
+        LIMIT $1 OFFSET $2
         "#,
-    )
-    .fetch_all(db)
-    .await?;
+        sort_column, sort_direction
+    );
 
-    rows.into_iter()
-        .map(|row| {
-            Ok(OrganizationRecord {
-                id: row.try_get("id")?,
-                name: row.try_get("name")?,
-                kind: row.try_get("kind")?,
-                status: row.try_get("status")?,
-            })
-        })
-        .collect()
+    let rows = sqlx::query(&query)
+        .bind(pagination.limit)
+        .bind(pagination.offset)
+        .fetch_all(db)
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .map(row_to_organization_record)
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    Ok(PaginatedOrganizations { items, total_items })
 }
 
 pub async fn get_organization_by_id(
@@ -69,15 +98,7 @@ pub async fn get_organization_by_id(
     .fetch_optional(db)
     .await?;
 
-    row.map(|row| {
-        Ok(OrganizationRecord {
-            id: row.try_get("id")?,
-            name: row.try_get("name")?,
-            kind: row.try_get("kind")?,
-            status: row.try_get("status")?,
-        })
-    })
-    .transpose()
+    row.map(row_to_organization_record).transpose()
 }
 
 pub async fn update_organization(
@@ -103,15 +124,7 @@ pub async fn update_organization(
     .fetch_optional(db)
     .await?;
 
-    row.map(|row| {
-        Ok(OrganizationRecord {
-            id: row.try_get("id")?,
-            name: row.try_get("name")?,
-            kind: row.try_get("kind")?,
-            status: row.try_get("status")?,
-        })
-    })
-    .transpose()
+    row.map(row_to_organization_record).transpose()
 }
 
 pub async fn soft_delete_organization(
@@ -119,4 +132,15 @@ pub async fn soft_delete_organization(
     organization_id: &str,
 ) -> Result<Option<OrganizationRecord>, sqlx::Error> {
     update_organization(db, organization_id, None, Some("deleted")).await
+}
+
+fn row_to_organization_record(
+    row: sqlx::postgres::PgRow,
+) -> Result<OrganizationRecord, sqlx::Error> {
+    Ok(OrganizationRecord {
+        id: row.try_get("id")?,
+        name: row.try_get("name")?,
+        kind: row.try_get("kind")?,
+        status: row.try_get("status")?,
+    })
 }

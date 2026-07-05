@@ -4,5 +4,6 @@ pub mod docs;
 pub mod errors;
 pub mod extractors;
 pub mod middleware;
+pub mod pagination;
 pub mod routes;
 pub mod state;

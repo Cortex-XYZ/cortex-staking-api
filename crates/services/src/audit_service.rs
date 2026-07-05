@@ -1,4 +1,11 @@
-use cortex_db::audit_repository::{self, AuditLogRecord};
+use cortex_db::{
+    audit_repository::{
+        self, 
+        AuditLogRecord,
+        PaginatedAuditLogs,
+    },
+    pagination::DbPagination,
+};
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -38,6 +45,7 @@ pub async fn record_admin_action(
 
 pub async fn list_audit_logs(
     db: &PgPool,
-) -> Result<Vec<AuditLogRecord>, sqlx::Error> {
-    audit_repository::list_audit_logs(db).await
+    pagination: DbPagination,
+) -> Result<PaginatedAuditLogs, sqlx::Error> {
+    audit_repository::list_audit_logs(db, pagination).await
 }

@@ -1,3 +1,4 @@
+use crate::pagination::DbPagination;
 use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone)]
@@ -13,6 +14,12 @@ pub struct UserRecord {
 }
 
 #[derive(Debug, Clone)]
+pub struct PaginatedUsers {
+    pub items: Vec<UserRecord>,
+    pub total_items: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateUserInput {
     pub email: Option<String>,
     pub wallet_address: Option<String>,
@@ -21,8 +28,35 @@ pub struct UpdateUserInput {
     pub rate_limit_tier: Option<String>,
 }
 
-pub async fn list_users(db: &PgPool) -> Result<Vec<UserRecord>, sqlx::Error> {
-    let rows = sqlx::query(
+pub async fn list_users(
+    db: &PgPool,
+    pagination: DbPagination,
+) -> Result<PaginatedUsers, sqlx::Error> {
+    let total_items: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM users
+        "#,
+    )
+    .fetch_one(db)
+    .await?;
+
+    let sort_column = match pagination.sort_column.as_str() {
+        "email" => "email",
+        "wallet_address" => "wallet_address",
+        "status" => "status",
+        "key_limit" => "key_limit",
+        "rate_limit_tier" => "rate_limit_tier",
+        "created_at" => "created_at",
+        _ => "created_at",
+    };
+
+    let sort_direction = match pagination.sort_direction.as_str() {
+        "asc" => "ASC",
+        _ => "DESC",
+    };
+
+    let query = format!(
         r#"
         SELECT
             id::text,
@@ -34,13 +68,24 @@ pub async fn list_users(db: &PgPool) -> Result<Vec<UserRecord>, sqlx::Error> {
             key_limit,
             rate_limit_tier
         FROM users
-        ORDER BY created_at DESC
+        ORDER BY {} {}
+        LIMIT $1 OFFSET $2
         "#,
-    )
-    .fetch_all(db)
-    .await?;
+        sort_column, sort_direction
+    );
 
-    rows.into_iter().map(row_to_user_record).collect()
+    let rows = sqlx::query(&query)
+        .bind(pagination.limit)
+        .bind(pagination.offset)
+        .fetch_all(db)
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .map(row_to_user_record)
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    Ok(PaginatedUsers { items, total_items })
 }
 
 pub async fn get_user_by_id(

@@ -1,3 +1,4 @@
+use crate::pagination::DbPagination;
 use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone)]
@@ -10,6 +11,12 @@ pub struct ApiKeyRecord {
     pub key_prefix: String,
     pub status: String,
     pub rate_limit_per_minute: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaginatedApiKeys {
+    pub items: Vec<ApiKeyRecord>,
+    pub total_items: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -83,20 +90,39 @@ pub async fn create_organization_api_key(
 
     tx.commit().await?;
 
-    Ok(ApiKeyRecord {
-        id: row.try_get("id")?,
-        owner_type: row.try_get("owner_type")?,
-        organization_id: row.try_get("organization_id")?,
-        user_id: row.try_get("user_id")?,
-        name: row.try_get("name")?,
-        key_prefix: row.try_get("key_prefix")?,
-        status: row.try_get("status")?,
-        rate_limit_per_minute: row.try_get("rate_limit_per_minute")?,
-    })
+    row_to_api_key_record(row)
 }
 
-pub async fn list_api_keys(db: &PgPool) -> Result<Vec<ApiKeyRecord>, sqlx::Error> {
-    let rows = sqlx::query(
+pub async fn list_api_keys(
+    db: &PgPool,
+    pagination: DbPagination,
+) -> Result<PaginatedApiKeys, sqlx::Error> {
+    let total_items: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM api_keys
+        "#,
+    )
+    .fetch_one(db)
+    .await?;
+
+    let sort_column = match pagination.sort_column.as_str() {
+        "owner_type" => "owner_type",
+        "name" => "name",
+        "key_prefix" => "key_prefix",
+        "status" => "status",
+        "rate_limit_per_minute" => "rate_limit_per_minute",
+        "created_at" => "created_at",
+        "last_used_at" => "last_used_at",
+        _ => "created_at",
+    };
+
+    let sort_direction = match pagination.sort_direction.as_str() {
+        "asc" => "ASC",
+        _ => "DESC",
+    };
+
+    let query = format!(
         r#"
         SELECT
             id::text,
@@ -108,26 +134,24 @@ pub async fn list_api_keys(db: &PgPool) -> Result<Vec<ApiKeyRecord>, sqlx::Error
             status,
             rate_limit_per_minute
         FROM api_keys
-        ORDER BY created_at DESC
+        ORDER BY {} {}
+        LIMIT $1 OFFSET $2
         "#,
-    )
-    .fetch_all(db)
-    .await?;
+        sort_column, sort_direction
+    );
 
-    rows.into_iter()
-        .map(|row| {
-            Ok(ApiKeyRecord {
-                id: row.try_get("id")?,
-                owner_type: row.try_get("owner_type")?,
-                organization_id: row.try_get("organization_id")?,
-                user_id: row.try_get("user_id")?,
-                name: row.try_get("name")?,
-                key_prefix: row.try_get("key_prefix")?,
-                status: row.try_get("status")?,
-                rate_limit_per_minute: row.try_get("rate_limit_per_minute")?,
-            })
-        })
-        .collect()
+    let rows = sqlx::query(&query)
+        .bind(pagination.limit)
+        .bind(pagination.offset)
+        .fetch_all(db)
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .map(row_to_api_key_record)
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    Ok(PaginatedApiKeys { items, total_items })
 }
 
 pub async fn revoke_api_key(
@@ -160,19 +184,7 @@ pub async fn get_api_key_by_id(
     .fetch_optional(db)
     .await?;
 
-    row.map(|row| {
-        Ok(ApiKeyRecord {
-            id: row.try_get("id")?,
-            owner_type: row.try_get("owner_type")?,
-            organization_id: row.try_get("organization_id")?,
-            user_id: row.try_get("user_id")?,
-            name: row.try_get("name")?,
-            key_prefix: row.try_get("key_prefix")?,
-            status: row.try_get("status")?,
-            rate_limit_per_minute: row.try_get("rate_limit_per_minute")?,
-        })
-    })
-    .transpose()
+    row.map(row_to_api_key_record).transpose()
 }
 
 pub async fn soft_delete_api_key(
@@ -202,19 +214,7 @@ pub async fn soft_delete_api_key(
     .fetch_optional(db)
     .await?;
 
-    row.map(|row| {
-        Ok(ApiKeyRecord {
-            id: row.try_get("id")?,
-            owner_type: row.try_get("owner_type")?,
-            organization_id: row.try_get("organization_id")?,
-            user_id: row.try_get("user_id")?,
-            name: row.try_get("name")?,
-            key_prefix: row.try_get("key_prefix")?,
-            status: row.try_get("status")?,
-            rate_limit_per_minute: row.try_get("rate_limit_per_minute")?,
-        })
-    })
-    .transpose()
+    row.map(row_to_api_key_record).transpose()
 }
 
 pub async fn get_api_key_scopes(
@@ -236,4 +236,17 @@ pub async fn get_api_key_scopes(
     rows.into_iter()
         .map(|row| row.try_get("scope"))
         .collect()
+}
+
+fn row_to_api_key_record(row: sqlx::postgres::PgRow) -> Result<ApiKeyRecord, sqlx::Error> {
+    Ok(ApiKeyRecord {
+        id: row.try_get("id")?,
+        owner_type: row.try_get("owner_type")?,
+        organization_id: row.try_get("organization_id")?,
+        user_id: row.try_get("user_id")?,
+        name: row.try_get("name")?,
+        key_prefix: row.try_get("key_prefix")?,
+        status: row.try_get("status")?,
+        rate_limit_per_minute: row.try_get("rate_limit_per_minute")?,
+    })
 }

@@ -1,4 +1,7 @@
-use cortex_db::user_repository::{self, UserRecord};
+use cortex_db::{
+    pagination::DbPagination,
+    user_repository::{self, PaginatedUsers, UserRecord},
+};
 use sqlx::PgPool;
 
 #[derive(Debug, Clone)]
@@ -10,8 +13,11 @@ pub struct UpdateUserServiceInput {
     pub rate_limit_tier: Option<String>,
 }
 
-pub async fn list_users(db: &PgPool) -> Result<Vec<UserRecord>, sqlx::Error> {
-    user_repository::list_users(db).await
+pub async fn list_users(
+    db: &PgPool,
+    pagination: DbPagination,
+) -> Result<PaginatedUsers, sqlx::Error> {
+    user_repository::list_users(db, pagination).await
 }
 
 pub async fn get_user_by_id(

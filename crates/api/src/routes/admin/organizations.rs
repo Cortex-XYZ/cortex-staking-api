@@ -1,5 +1,6 @@
 use actix_web::{delete, get, patch, post, web, HttpResponse, Responder};
 use cortex_auth::extractor::require_cortex_admin;
+use cortex_db::pagination::DbPagination;
 use cortex_services::{audit_actions, audit_service, organization_service};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -7,6 +8,12 @@ use utoipa::ToSchema;
 use crate::{
     errors::{internal_error, not_found},
     extractors::{auth::Authenticated, request_id::get_request_id},
+    pagination::{
+        PaginatedResponse, 
+        PaginationMeta, 
+        PaginationQuery,
+        SortDirection,
+    },
     state::AppState,
 };
 
@@ -37,6 +44,34 @@ impl From<cortex_db::organization_repository::OrganizationRecord> for Organizati
             kind: organization.kind,
             status: organization.status,
         }
+    }
+}
+
+fn to_db_pagination(query: PaginationQuery) -> (DbPagination, i64, i64) {
+    let pagination = query.into_pagination();
+
+    let sort_direction = match pagination.direction {
+        SortDirection::Asc => "asc",
+        SortDirection::Desc => "desc",
+    };
+
+    (
+        DbPagination::new(
+            pagination.page_size,
+            pagination.offset,
+            pagination.sort.unwrap_or_else(|| "created_at".to_string()),
+            sort_direction,
+        ),
+        pagination.page,
+        pagination.page_size,
+    )
+}
+
+fn total_pages(total_items: i64, page_size: i64) -> i64 {
+    if total_items == 0 {
+        0
+    } else {
+        (total_items + page_size - 1) / page_size
     }
 }
 
@@ -119,22 +154,34 @@ pub async fn list_organizations(
     req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
+    query: web::Query<PaginationQuery>
 ) -> actix_web::Result<impl Responder> {
     let request_id = get_request_id(&req);
 
     require_cortex_admin(&auth.0)?;
 
-    let organizations = match organization_service::list_organizations(&state.db).await {
-        Ok(organizations) => organizations,
+    let (db_pagination, page, page_size) = to_db_pagination(query.into_inner());
+
+    let paginated = match organization_service::list_organizations(&state.db, db_pagination).await {
+        Ok(paginated) => paginated,
         Err(_) => return Ok(internal_error(request_id)),
     };
 
-    let response: Vec<OrganizationResponse> = organizations
+    let response: Vec<OrganizationResponse> = paginated
+        .items
         .into_iter()
         .map(OrganizationResponse::from)
         .collect();
 
-    Ok(HttpResponse::Ok().json(response))
+    Ok(HttpResponse::Ok().json(PaginatedResponse {
+        data: response,
+        pagination: PaginationMeta {
+            page,
+            page_size,
+            total_items: paginated.total_items,
+            total_pages: total_pages(paginated.total_items, page_size),
+        },
+    }))
 }
 
 #[utoipa::path(

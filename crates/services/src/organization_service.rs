@@ -1,4 +1,7 @@
-use cortex_db::organization_repository::{self, OrganizationRecord};
+use cortex_db::{
+    pagination::DbPagination,
+    organization_repository::{self, OrganizationRecord, PaginatedOrganizations},
+};
 use sqlx::PgPool;
 
 #[derive(Debug, Clone)]
@@ -15,8 +18,9 @@ pub async fn create_partner_organization(
 
 pub async fn list_organizations(
     db: &PgPool,
-) -> Result<Vec<OrganizationRecord>, sqlx::Error> {
-    organization_repository::list_organizations(db).await
+    pagination: DbPagination,
+) -> Result<PaginatedOrganizations, sqlx::Error> {
+    organization_repository::list_organizations(db, pagination).await
 }
 
 pub async fn get_organization_by_id(

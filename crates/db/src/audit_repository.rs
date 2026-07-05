@@ -1,3 +1,4 @@
+use crate::pagination::DbPagination;
 use serde_json::Value;
 use sqlx::{PgPool, Row};
 
@@ -14,6 +15,12 @@ pub struct AuditLogRecord {
     pub old_values: Option<Value>,
     pub new_values: Option<Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaginatedAuditLogs {
+    pub items: Vec<AuditLogRecord>,
+    pub total_items: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -83,13 +90,36 @@ pub async fn create_audit_log(
     .fetch_one(db)
     .await?;
 
-    Ok(row_to_audit_log(row)?)
+    row_to_audit_log(row)
 }
 
 pub async fn list_audit_logs(
     db: &PgPool,
-) -> Result<Vec<AuditLogRecord>, sqlx::Error> {
-    let rows = sqlx::query(
+    pagination: DbPagination,
+) -> Result<PaginatedAuditLogs, sqlx::Error> {
+    let total_items: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM audit_logs
+        "#,
+    )
+    .fetch_one(db)
+    .await?;
+
+    let sort_column = match pagination.sort_column.as_str() {
+        "action" => "action",
+        "resource_type" => "resource_type",
+        "request_id" => "request_id",
+        "created_at" => "created_at",
+        _ => "created_at",
+    };
+
+    let sort_direction = match pagination.sort_direction.as_str() {
+        "asc" => "ASC",
+        _ => "DESC",
+    };
+
+    let query = format!(
         r#"
         SELECT
             id::text,
@@ -104,19 +134,27 @@ pub async fn list_audit_logs(
             new_values,
             created_at
         FROM audit_logs
-        ORDER BY created_at DESC
-        LIMIT 100
+        ORDER BY {} {}
+        LIMIT $1 OFFSET $2
         "#,
-    )
-    .fetch_all(db)
-    .await?;
+        sort_column, sort_direction
+    );
 
-    rows.into_iter().map(row_to_audit_log).collect()
+    let rows = sqlx::query(&query)
+        .bind(pagination.limit)
+        .bind(pagination.offset)
+        .fetch_all(db)
+        .await?;
+
+    let items = rows
+        .into_iter()
+        .map(row_to_audit_log)
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    Ok(PaginatedAuditLogs { items, total_items })
 }
 
-fn row_to_audit_log(
-    row: sqlx::postgres::PgRow,
-) -> Result<AuditLogRecord, sqlx::Error> {
+fn row_to_audit_log(row: sqlx::postgres::PgRow) -> Result<AuditLogRecord, sqlx::Error> {
     Ok(AuditLogRecord {
         id: row.try_get("id")?,
         actor_api_key_id: row.try_get("actor_api_key_id")?,
