@@ -20,6 +20,15 @@ pub struct PaginatedApiKeys {
 }
 
 #[derive(Debug, Clone)]
+pub struct ApiKeyFilters {
+    pub organization_id: Option<String>,
+    pub status: Option<String>,
+    pub scope: Option<String>,
+    pub created_after: Option<String>,
+    pub last_used_after: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateOrganizationApiKeyInput {
     pub organization_id: String,
     pub name: String,
@@ -96,13 +105,32 @@ pub async fn create_organization_api_key(
 pub async fn list_api_keys(
     db: &PgPool,
     pagination: DbPagination,
+    filters: ApiKeyFilters,
 ) -> Result<PaginatedApiKeys, sqlx::Error> {
     let total_items: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
-        FROM api_keys
+        FROM api_keys ak
+        WHERE ($1::uuid IS NULL OR ak.organization_id = $1::uuid)
+          AND ($2::text IS NULL OR ak.status = $2)
+          AND (
+              $3::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM api_key_scopes aks
+                  WHERE aks.api_key_id = ak.id
+                    AND aks.scope = $3
+              )
+          )
+          AND ($4::timestamptz IS NULL OR ak.created_at >= $4::timestamptz)
+          AND ($5::timestamptz IS NULL OR ak.last_used_at >= $5::timestamptz)
         "#,
     )
+    .bind(&filters.organization_id)
+    .bind(&filters.status)
+    .bind(&filters.scope)
+    .bind(&filters.created_after)
+    .bind(&filters.last_used_after)
     .fetch_one(db)
     .await?;
 
@@ -125,16 +153,29 @@ pub async fn list_api_keys(
     let query = format!(
         r#"
         SELECT
-            id::text,
-            owner_type,
-            organization_id::text,
-            user_id::text,
-            name,
-            key_prefix,
-            status,
-            rate_limit_per_minute
-        FROM api_keys
-        ORDER BY {} {}
+            ak.id::text,
+            ak.owner_type,
+            ak.organization_id::text,
+            ak.user_id::text,
+            ak.name,
+            ak.key_prefix,
+            ak.status,
+            ak.rate_limit_per_minute
+        FROM api_keys ak
+        WHERE ($3::uuid IS NULL OR ak.organization_id = $3::uuid)
+          AND ($4::text IS NULL OR ak.status = $4)
+          AND (
+              $5::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM api_key_scopes aks
+                  WHERE aks.api_key_id = ak.id
+                    AND aks.scope = $5
+              )
+          )
+          AND ($6::timestamptz IS NULL OR ak.created_at >= $6::timestamptz)
+          AND ($7::timestamptz IS NULL OR ak.last_used_at >= $7::timestamptz)
+        ORDER BY ak.{} {}
         LIMIT $1 OFFSET $2
         "#,
         sort_column, sort_direction
@@ -143,6 +184,11 @@ pub async fn list_api_keys(
     let rows = sqlx::query(&query)
         .bind(pagination.limit)
         .bind(pagination.offset)
+        .bind(&filters.organization_id)
+        .bind(&filters.status)
+        .bind(&filters.scope)
+        .bind(&filters.created_after)
+        .bind(&filters.last_used_after)
         .fetch_all(db)
         .await?;
 

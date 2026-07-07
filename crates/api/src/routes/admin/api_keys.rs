@@ -43,6 +43,20 @@ pub struct CreateApiKeyResponse {
     pub token: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ListApiKeysQuery {
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+
+    pub organization_id: Option<String>,
+    pub status: Option<String>,
+    pub scope: Option<String>,
+    pub created_after: Option<String>,
+    pub last_used_after: Option<String>,
+}
+
 impl From<cortex_db::api_key_repository::ApiKeyRecord> for ApiKeyResponse {
     fn from(key: cortex_db::api_key_repository::ApiKeyRecord) -> Self {
         Self {
@@ -174,15 +188,36 @@ pub async fn list_api_keys(
     req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
-    query: web::Query<PaginationQuery>
+    query: web::Query<ListApiKeysQuery>,
 ) -> actix_web::Result<impl Responder> {
     let request_id = get_request_id(&req);
 
     require_cortex_admin(&auth.0)?;
 
-    let (db_pagination, page, page_size) = to_db_pagination(query.into_inner());
+    let query = query.into_inner();
 
-    let paginated = match api_key_service::list_api_keys(&state.db, db_pagination).await {
+    let (db_pagination, page, page_size) = to_db_pagination(PaginationQuery {
+        page: query.page,
+        page_size: query.page_size,
+        sort: query.sort,
+        direction: query.direction,
+    });
+
+    let paginated = match api_key_service::list_api_keys(
+        &state.db,
+        api_key_service::ListApiKeysInput {
+            pagination: db_pagination,
+            filters: cortex_db::api_key_repository::ApiKeyFilters {
+                organization_id: query.organization_id,
+                status: query.status,
+                scope: query.scope,
+                created_after: query.created_after,
+                last_used_after: query.last_used_after,
+            },
+        },
+    )
+    .await
+    {
         Ok(paginated) => paginated,
         Err(_) => return Ok(internal_error(request_id)),
     };

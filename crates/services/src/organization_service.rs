@@ -1,12 +1,26 @@
 use cortex_db::{
+    organization_repository::{
+        self, OrganizationFilters, OrganizationRecord, PaginatedOrganizations,
+    },
     pagination::DbPagination,
-    organization_repository::{self, OrganizationRecord, PaginatedOrganizations},
 };
 use sqlx::PgPool;
 
 #[derive(Debug, Clone)]
 pub struct CreatePartnerOrganizationInput {
     pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListOrganizationsInput {
+    pub pagination: DbPagination,
+    pub filters: OrganizationFilters,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateOrganizationInput {
+    pub name: Option<String>,
+    pub status: Option<String>,
 }
 
 pub async fn create_partner_organization(
@@ -18,9 +32,14 @@ pub async fn create_partner_organization(
 
 pub async fn list_organizations(
     db: &PgPool,
-    pagination: DbPagination,
+    input: ListOrganizationsInput,
 ) -> Result<PaginatedOrganizations, sqlx::Error> {
-    organization_repository::list_organizations(db, pagination).await
+    organization_repository::list_organizations(
+        db,
+        input.pagination,
+        input.filters,
+    )
+    .await
 }
 
 pub async fn get_organization_by_id(
@@ -28,12 +47,6 @@ pub async fn get_organization_by_id(
     organization_id: &str,
 ) -> Result<Option<OrganizationRecord>, sqlx::Error> {
     organization_repository::get_organization_by_id(db, organization_id).await
-}
-
-#[derive(Debug, Clone)]
-pub struct UpdateOrganizationInput {
-    pub name: Option<String>,
-    pub status: Option<String>,
 }
 
 pub async fn update_organization(

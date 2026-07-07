@@ -36,6 +36,18 @@ pub struct UpdateOrganizationRequest {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ListOrganizationsQuery {
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+    pub sort: Option<String>,
+    pub direction: Option<String>,
+
+    pub status: Option<String>,
+    pub kind: Option<String>,
+    pub name: Option<String>,
+}
+
 impl From<cortex_db::organization_repository::OrganizationRecord> for OrganizationResponse {
     fn from(organization: cortex_db::organization_repository::OrganizationRecord) -> Self {
         Self {
@@ -154,15 +166,34 @@ pub async fn list_organizations(
     req: actix_web::HttpRequest,
     auth: Authenticated,
     state: web::Data<AppState>,
-    query: web::Query<PaginationQuery>
+    query: web::Query<ListOrganizationsQuery>,
 ) -> actix_web::Result<impl Responder> {
     let request_id = get_request_id(&req);
 
     require_cortex_admin(&auth.0)?;
 
-    let (db_pagination, page, page_size) = to_db_pagination(query.into_inner());
+    let query = query.into_inner();
 
-    let paginated = match organization_service::list_organizations(&state.db, db_pagination).await {
+    let (db_pagination, page, page_size) = to_db_pagination(PaginationQuery {
+        page: query.page,
+        page_size: query.page_size,
+        sort: query.sort,
+        direction: query.direction,
+    });
+
+    let paginated = match organization_service::list_organizations(
+        &state.db,
+        organization_service::ListOrganizationsInput {
+            pagination: db_pagination,
+            filters: cortex_db::organization_repository::OrganizationFilters {
+                status: query.status,
+                kind: query.kind,
+                name: query.name,
+            },
+        },
+    )
+    .await
+    {
         Ok(paginated) => paginated,
         Err(_) => return Ok(internal_error(request_id)),
     };

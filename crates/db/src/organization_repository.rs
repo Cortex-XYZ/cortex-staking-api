@@ -15,6 +15,13 @@ pub struct PaginatedOrganizations {
     pub total_items: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct OrganizationFilters {
+    pub status: Option<String>,
+    pub kind: Option<String>,
+    pub name: Option<String>,
+}
+
 pub async fn create_partner_organization(
     db: &PgPool,
     name: &str,
@@ -36,13 +43,20 @@ pub async fn create_partner_organization(
 pub async fn list_organizations(
     db: &PgPool,
     pagination: DbPagination,
+    filters: OrganizationFilters,
 ) -> Result<PaginatedOrganizations, sqlx::Error> {
     let total_items: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)
         FROM organizations
+        WHERE ($1::text IS NULL OR status = $1)
+          AND ($2::text IS NULL OR kind = $2)
+          AND ($3::text IS NULL OR name ILIKE '%' || $3 || '%')
         "#,
     )
+    .bind(&filters.status)
+    .bind(&filters.kind)
+    .bind(&filters.name)
     .fetch_one(db)
     .await?;
 
@@ -63,6 +77,9 @@ pub async fn list_organizations(
         r#"
         SELECT id::text, name, kind, status
         FROM organizations
+        WHERE ($3::text IS NULL OR status = $3)
+          AND ($4::text IS NULL OR kind = $4)
+          AND ($5::text IS NULL OR name ILIKE '%' || $5 || '%')
         ORDER BY {} {}
         LIMIT $1 OFFSET $2
         "#,
@@ -72,6 +89,9 @@ pub async fn list_organizations(
     let rows = sqlx::query(&query)
         .bind(pagination.limit)
         .bind(pagination.offset)
+        .bind(&filters.status)
+        .bind(&filters.kind)
+        .bind(&filters.name)
         .fetch_all(db)
         .await?;
 

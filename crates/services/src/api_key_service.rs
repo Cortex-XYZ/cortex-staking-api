@@ -1,8 +1,9 @@
 use cortex_auth::api_key::generate_api_key;
 use cortex_db::{
     api_key_repository::{
-        self, ApiKeyRecord, CreateOrganizationApiKeyInput, PaginatedApiKeys,
-    }, pagination::DbPagination,
+        self, ApiKeyFilters, ApiKeyRecord, CreateOrganizationApiKeyInput, PaginatedApiKeys,
+    },
+    pagination::DbPagination,
 };
 use sqlx::PgPool;
 
@@ -12,6 +13,12 @@ pub struct CreateOrganizationApiKeyServiceInput {
     pub name: String,
     pub scopes: Vec<String>,
     pub rate_limit_per_minute: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListApiKeysInput {
+    pub pagination: DbPagination,
+    pub filters: ApiKeyFilters,
 }
 
 #[derive(Debug, Clone)]
@@ -46,10 +53,10 @@ pub async fn create_organization_api_key(
 }
 
 pub async fn list_api_keys(
-    db: &PgPool, 
-    pagination: DbPagination,
+    db: &PgPool,
+    input: ListApiKeysInput,
 ) -> Result<PaginatedApiKeys, sqlx::Error> {
-    api_key_repository::list_api_keys(db, pagination).await
+    api_key_repository::list_api_keys(db, input.pagination, input.filters).await
 }
 
 pub async fn get_api_key_by_id(
