@@ -506,6 +506,7 @@ name = "cortex-chain-monad"
 version = "0.1.0"
 dependencies = [
  "cortex-core",
+ "reqwest",
  "serde",
  "serde_json",
  "utoipa",
@@ -544,6 +545,7 @@ name = "cortex-services"
 version = "0.1.0"
 dependencies = [
  "cortex-auth",
+ "cortex-chain-monad",
  "cortex-db",
  "serde",
  "serde_json",

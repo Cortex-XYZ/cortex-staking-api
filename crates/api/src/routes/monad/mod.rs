@@ -1,3 +1,6 @@
+pub mod data;
+pub mod transactions;
+
 use actix_web::{HttpResponse, Responder, get, web};
 use cortex_auth::{extractor::require_scope, model::Scope};
 
@@ -29,4 +32,6 @@ pub async fn monad_health(auth: Authenticated) -> actix_web::Result<impl Respond
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(monad_health);
+    cfg.configure(data::configure);
+    cfg.configure(transactions::configure);
 }

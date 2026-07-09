@@ -11,4 +11,5 @@ serde_json.workspace = true
 sqlx.workspace = true
 
 cortex-auth = { path = "../auth" }
+cortex-chain-monad = { path = "../chains/monad" }
 cortex-db = { path = "../db" }
