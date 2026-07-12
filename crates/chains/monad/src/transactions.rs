@@ -76,7 +76,7 @@ pub fn build_stake_transaction(
     let location = request.location.unwrap_or_default();
 
     // delegate(uint64 validatorId), payable
-    let data = format!("0x{}{}", "6d0c9fe3", encode_u64(request.validator_id));
+    let data = format!("0x{}{}", "84994fec", encode_u64(request.validator_id));
 
     build_unsigned_transaction(
         network,
@@ -100,7 +100,7 @@ pub fn build_claim_rewards_transaction(
     let location = request.location.unwrap_or_default();
 
     // claimRewards(uint64 validatorId)
-    let data = format!("0x{}{}", "d9c0b4c1", encode_u64(request.validator_id));
+    let data = format!("0x{}{}", "a76e2ca5", encode_u64(request.validator_id));
 
     build_unsigned_transaction(
         network,
@@ -124,7 +124,7 @@ pub fn build_compound_rewards_transaction(
     let location = request.location.unwrap_or_default();
 
     // compound(uint64 validatorId)
-    let data = format!("0x{}{}", "f69e2046", encode_u64(request.validator_id));
+    let data = format!("0x{}{}", "b34fea67", encode_u64(request.validator_id));
 
     build_unsigned_transaction(
         network,
@@ -151,7 +151,7 @@ pub fn build_deactivate_transaction(
     // undelegate(uint64 validatorId, uint256 amount, uint8 withdrawId)
     let data = format!(
         "0x{}{}{}{}",
-        "0d9f5aed",
+        "5cf41514",
         encode_u64(request.validator_id),
         encode_u256_decimal(&amount_wei),
         encode_u8(request.withdraw_id)
@@ -181,7 +181,7 @@ pub fn build_withdraw_transaction(
     // withdraw(uint64 validatorId, uint8 withdrawId)
     let data = format!(
         "0x{}{}{}",
-        "2e1a7d4d",
+        "aed2ee73",
         encode_u64(request.validator_id),
         encode_u8(request.withdraw_id)
     );

@@ -21,6 +21,7 @@ pub enum MonadServiceError {
     MissingWalletAddress,
     MissingValidatorId,
     MissingWithdrawId,
+    InvalidWalletAddress,
     RpcError,
     InvalidRpcResponse,
 }
@@ -28,6 +29,7 @@ pub enum MonadServiceError {
 impl From<data::MonadDataError> for MonadServiceError {
     fn from(error: data::MonadDataError) -> Self {
         match error {
+            data::MonadDataError::InvalidWalletAddress => Self::InvalidWalletAddress,
             data::MonadDataError::MissingWalletAddress => Self::MissingWalletAddress,
             data::MonadDataError::MissingValidatorId => Self::MissingValidatorId,
             data::MonadDataError::MissingWithdrawId => Self::MissingWithdrawId,

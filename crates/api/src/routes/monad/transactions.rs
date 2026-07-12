@@ -76,6 +76,13 @@ fn monad_service_error_response(
             "Invalid MON amount",
             request_id,
         ),
+
+        monad_service::MonadServiceError::InvalidWalletAddress => error_response(
+            actix_web::http::StatusCode::BAD_REQUEST,
+            "invalid_wallet_address",
+            "Invalid wallet address",
+            request_id,
+        ),
     }
 }
 
