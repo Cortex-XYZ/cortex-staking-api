@@ -4,9 +4,16 @@ use serde_json::Value;
 
 #[derive(Debug)]
 pub enum MonadClientError {
-    RpcRequestFailed,
-    RpcError(String),
-    InvalidResponse,
+    RpcRequestFailed(String),
+    HttpError {
+        status: u16,
+        body: String,
+    },
+    RpcError {
+        code: Option<i64>,
+        message: String,
+    },
+    InvalidResponse(String),
 }
 
 #[derive(Clone)]
@@ -31,6 +38,7 @@ struct JsonRpcResponse {
 
 #[derive(Debug, Deserialize)]
 struct JsonRpcError {
+    code: Option<i64>,
     message: String,
 }
 
@@ -59,7 +67,11 @@ impl MonadRpcClient {
         result
             .as_str()
             .map(|value| value.to_string())
-            .ok_or(MonadClientError::InvalidResponse)
+            .ok_or_else(|| {
+                MonadClientError::InvalidResponse(
+                    "JSON-RPC result was not a string".to_string(),
+                )
+            })
     }
 
     pub async fn eth_call(
@@ -83,7 +95,11 @@ impl MonadRpcClient {
         result
             .as_str()
             .map(|value| value.to_string())
-            .ok_or(MonadClientError::InvalidResponse)
+            .ok_or_else(|| {
+                MonadClientError::InvalidResponse(
+                    "JSON-RPC result was not a string".to_string(),
+                )
+            })
     }
 
     async fn rpc_call(
@@ -104,17 +120,44 @@ impl MonadRpcClient {
             .json(&request)
             .send()
             .await
-            .map_err(|_| MonadClientError::RpcRequestFailed)?;
+            .map_err(|error| {
+                MonadClientError::RpcRequestFailed(error.to_string())
+            })?;
 
-        let body = response
-            .json::<JsonRpcResponse>()
+        let status = response.status();
+        let response_body = response
+            .text()
             .await
-            .map_err(|_| MonadClientError::InvalidResponse)?;
+            .map_err(|error| {
+                MonadClientError::InvalidResponse(error.to_string())
+            })?;
 
-        if let Some(error) = body.error {
-            return Err(MonadClientError::RpcError(error.message));
+        if !status.is_success() {
+            return Err(MonadClientError::HttpError {
+                status: status.as_u16(),
+                body: response_body,
+            });
         }
 
-        body.result.ok_or(MonadClientError::InvalidResponse)
+        let body: JsonRpcResponse = serde_json::from_str(&response_body)
+            .map_err(|error| {
+                MonadClientError::InvalidResponse(format!(
+                    "{}; response body: {}",
+                    error, response_body
+                ))
+            })?;
+
+        if let Some(error) = body.error {
+            return Err(MonadClientError::RpcError {
+                code: error.code,
+                message: error.message,
+            });
+        }
+
+        body.result.ok_or_else(|| {
+            MonadClientError::InvalidResponse(
+                "JSON-RPC response contained neither result nor error".to_string(),
+            )
+        })
     }
 }

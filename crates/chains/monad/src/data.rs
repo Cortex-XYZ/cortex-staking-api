@@ -41,9 +41,16 @@ fn require_withdraw_id(query: &MonadDataQuery) -> Result<u8, MonadDataError> {
 }
 
 fn map_client_error(error: MonadClientError) -> MonadDataError {
+    tracing::error!(error = ?error, "Monad RPC request failed");
+
     match error {
-        MonadClientError::InvalidResponse => MonadDataError::InvalidRpcResponse,
-        MonadClientError::RpcRequestFailed | MonadClientError::RpcError(_) => {
+        MonadClientError::InvalidResponse(_) => {
+            MonadDataError::InvalidRpcResponse
+        }
+
+        MonadClientError::RpcRequestFailed(_)
+        | MonadClientError::HttpError { .. }
+        | MonadClientError::RpcError { .. } => {
             MonadDataError::RpcError
         }
     }
